@@ -1,0 +1,82 @@
+===============================================================
+=                     Pre Processing in R                     =
+===============================================================
+#To remove previous objects stored in R environment
+rm(list=ls(all=TRUE))
+
+# read posts.csv file into a dataframe
+posts = read.csv("posts.csv", header = FALSE, sep = ",")
+
+# assign the schema to the dataframe
+names(posts) = c("Title", "Date", "Blogger", "Categories", "Post", 
+"Post_Length", "No_of_outlinks", "No_of_inlinks", "No_of_comments", 
+"Comments_URL", "Permalink", "Junk")
+
+# understand the data - look at dimensions to see the data exists beyond 
+# 11th column
+dim(posts)
+
+# remove those records - where data exists in the 12th column
+mydata = subset(posts, Junk=="")
+
+# remove records with the blanks in the Post field
+mydata = subset(mydata, Post != "")
+
+# remove rownames
+rownames(mydata) <- NULL
+
+# remove 12th column
+mydata = subset(mydata, select = -c(Junk))
+
+# remove header
+names(mydata) = NULL
+
+# set working directory to create the documents
+setwd('D:/CPEE/Projects/BD Projects/Project 5/Code/Final')
+
+# initialize the dynamic file name
+outputfile = paste("PostId_",1,".txt",sep="")
+
+# write/create the documents with the post as content
+for (i in 1:nrow(mydata)) {
+  post = mydata[i,]
+  outputfile = paste("PostId_",i,".txt",sep="")
+  cat(as.character(post$Post),file=outputfile,sep="")
+}  
+
+===============================================================
+=	TF, TF-IDF and Clustering using Apache Mahout         =
+===============================================================
+# Upload the extracted data to the HDFS. In order to save the compute time and resources, 
+# you may use only a subset of the dataset.
+$ hdfs dfs -mkdir /tmp/blog
+
+$ hdfs dfs -mkdir /tmp/blog/Input
+
+$ hdfs dfs –put /home/cloudera/Desktop/Apple-Blogs /tmp/blog/blog-recs
+
+# Generate the Hadoop sequence files from the uploaded text data.
+$ mahout seqdirectory -i /tmp/blog/blog-recs -o /tmp/blog/blog-seq
+
+# Generate TF and TF-IDF sparse vector models from the text data in the sequence files.
+$ mahout seq2sparse -i /tmp/blog/blog-seq -o /tmp/blog/blog-vector
+
+
+# Check the output directory using the following command. The tfidf-vectors folder
+# contains the TF-IDF model vectors, the tf-vectors folder contains the term count
+# model vectors, and the dictionary.file-0 contains the term to term-index mapping.
+$ hdfs dfs -ls /tmp/blog/blog-vector
+
+# Optionally, use the following command to dump the TF-IDF vectors as text.
+# The key is the filename and the contents of the vectors are in the format 
+# <term index>:<TF-IDF value>.
+$ mahout seqdumper -i /tmp/blog/blog-vector/tfidf-vectors/part-r-00000
+
+# Execute the following command to run the Mahout KMeansClustering computation.
+$ mahout kmeans --input /tmp/blog/blog-vector/tfidf-vectors --clusters /tmp/blog/clusters --output /tmp/blog/blogs-km-clusters --distanceMeasure org.apache.mahout.common.distance.SquaredEuclideanDistanceMeasure -k 5 --maxIter 20 --clustering
+
+# Execute the following command to convert the clusters to text.
+$ mahout clusterdump -i /tmp/blog/blogs-km-clusters/clusters-*-final --output /tmp/blogs_clusters_dump -d /tmp/blog/blog-vector/dictionary.file-0 -dt sequencefile --pointsDir /tmp/blog/blogs-km-clusters/clusteredPoints
+
+# Display cluster dump on the console.
+$ cat /tmp/blog/blogs-clusters-dump
